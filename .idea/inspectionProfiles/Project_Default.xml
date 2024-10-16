@@ -1,0 +1,55 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredPackages">
+        <value>
+          <list size="42">
+            <item index="0" class="java.lang.String" itemvalue="scipy" />
+            <item index="1" class="java.lang.String" itemvalue="matplotlib" />
+            <item index="2" class="java.lang.String" itemvalue="torch" />
+            <item index="3" class="java.lang.String" itemvalue="numpy" />
+            <item index="4" class="java.lang.String" itemvalue="easydict" />
+            <item index="5" class="java.lang.String" itemvalue="kornia" />
+            <item index="6" class="java.lang.String" itemvalue="randaugment" />
+            <item index="7" class="java.lang.String" itemvalue="pillow" />
+            <item index="8" class="java.lang.String" itemvalue="torchvision" />
+            <item index="9" class="java.lang.String" itemvalue="torch_optimizer" />
+            <item index="10" class="java.lang.String" itemvalue="pidfile" />
+            <item index="11" class="java.lang.String" itemvalue="tqdm" />
+            <item index="12" class="java.lang.String" itemvalue="transformers" />
+            <item index="13" class="java.lang.String" itemvalue="seaborn" />
+            <item index="14" class="java.lang.String" itemvalue="asposestorage" />
+            <item index="15" class="java.lang.String" itemvalue="scikit_learn" />
+            <item index="16" class="java.lang.String" itemvalue="mxnet" />
+            <item index="17" class="java.lang.String" itemvalue="clip" />
+            <item index="18" class="java.lang.String" itemvalue="pycuda" />
+            <item index="19" class="java.lang.String" itemvalue="skimage" />
+            <item index="20" class="java.lang.String" itemvalue="Pillow" />
+            <item index="21" class="java.lang.String" itemvalue="jax" />
+            <item index="22" class="java.lang.String" itemvalue="absl-py" />
+            <item index="23" class="java.lang.String" itemvalue="flax" />
+            <item index="24" class="java.lang.String" itemvalue="jaxlib" />
+            <item index="25" class="java.lang.String" itemvalue="ml_collections" />
+            <item index="26" class="java.lang.String" itemvalue="tensorflow-datasets" />
+            <item index="27" class="java.lang.String" itemvalue="tensorflow_addons" />
+            <item index="28" class="java.lang.String" itemvalue="tensorflow-cpu" />
+            <item index="29" class="java.lang.String" itemvalue="clu" />
+            <item index="30" class="java.lang.String" itemvalue="scikit-image" />
+            <item index="31" class="java.lang.String" itemvalue="tokenizers" />
+            <item index="32" class="java.lang.String" itemvalue="continuum" />
+            <item index="33" class="java.lang.String" itemvalue="open-clip-torch" />
+            <item index="34" class="java.lang.String" itemvalue="scikit-learn" />
+            <item index="35" class="java.lang.String" itemvalue="pipreqs" />
+            <item index="36" class="java.lang.String" itemvalue="omegaconf" />
+            <item index="37" class="java.lang.String" itemvalue="pandas" />
+            <item index="38" class="java.lang.String" itemvalue="ftfy" />
+            <item index="39" class="java.lang.String" itemvalue="hydra-core" />
+            <item index="40" class="java.lang.String" itemvalue="tensorboard" />
+            <item index="41" class="java.lang.String" itemvalue="oauthlib" />
+          </list>
+        </value>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>
