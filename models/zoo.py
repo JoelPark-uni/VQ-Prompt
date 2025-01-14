@@ -4,9 +4,141 @@ import torch.nn.functional as F
 import torch.nn.init as init
 import torchvision.models as models
 from torch.autograd import Variable
+from zmq import device
 from .vit import VisionTransformer
 import numpy as np
 import copy
+import torchhd
+
+class HDPrompt(nn.Module):
+    def __init__(self, emb_d, n_tasks, prompt_param, key_dim=768, hd_dim=5000, hd_cls=torchhd.MAPTensor, dec_N=100):
+        super().__init__()
+        self.task_count = 0
+        self.emb_d = emb_d
+        self.key_d = key_dim
+        self.n_tasks = n_tasks
+        self.soft_t = prompt_param[-1]
+        self.hd_dim = hd_dim
+
+
+        self._init_smart(emb_d, prompt_param)
+        self.enc = self._init_hd_enc(emb_d, hd_dim, hd_cls)
+        self.dec = self._init_hd_dec(emb_d, hd_dim, self.e_p_length, emb_d//dec_N)
+
+        # e prompt init
+        for e in self.e_layers:
+            # for model saving/loading simplicity, we init the full paramaters here
+            # however, please note that we reinit the new components at each task
+            # in the "spirit of continual learning", as we don't know how many tasks
+            # we will encounter at the start of the task sequence
+
+            # e_l = self.e_p_length
+            k = hd_cls.random(self.e_pool_size, self.hd_dim, device='cuda') # 10, D
+            # p = hd_cls.random(self.e_pool_size, self.e_p_length, self.hd_dim) # Random Initializing
+            # p = tensor_prompt(self.e_pool_size, self.e_p_length, emb_d)
+            
+            self.value_basis = hd_cls.random(self.e_p_length, self.hd_dim, device='cuda')
+            p = torchhd.bind(k.view(self.e_pool_size, 1, self.hd_dim), self.value_basis.view(1, self.e_p_length, self.hd_dim)) # Key-Basis Initializing
+
+            setattr(self, f'e_p_{e}',p)
+            setattr(self, f'e_k_{e}',k)
+
+    def _init_smart(self, emb_d, prompt_param):
+        self.top_k = 1
+        # prompt basic param
+        self.e_pool_size = int(prompt_param[0]) # 10
+        self.e_p_length = int(prompt_param[1]) # 5
+        self.e_layers = [0,1,2,3,4]
+
+    def _init_hd_enc(self, emb_d, hd_dim, hd_cls):
+        class HDEncoder(nn.Module):
+            def __init__(self, hd_cls, emb_d, hd_dim):
+                super(HDEncoder, self).__init__()
+                self.emd_d = emb_d
+                self.hd_dim = hd_dim
+                self.hd_enc_basis = hd_cls.random(emb_d, hd_dim, device='cuda')
+            
+            def forward(self, x):
+                with torch.no_grad():
+                    x = torch.einsum('bd,dh->bh', x, self.hd_enc_basis)
+                    x = hd_cls(x)
+                    x = x.normalize()
+                return x
+            
+        return HDEncoder(hd_cls, emb_d, hd_dim)
+    
+    def _init_hd_dec(self, emb_d, hd_dim, basis_length, features):
+        class HDDecoder(nn.Module):
+            def __init__(self, emb_d, hd_dim, basis_length, features):
+                super(HDDecoder, self).__init__()
+                self.emd_d = emb_d
+                self.hd_dim = hd_dim
+                self.basis_length = basis_length
+                self.features = features
+                print(f"HD Decoder Initialized with {features} features.")
+                self.hd_attns = torch.stack([nn.Parameter(torch.randn(hd_dim, features)) for _ in range(basis_length)], dim=0).to('cuda')
+                self.emb_gen = torch.stack([nn.Parameter(torch.randn(features, emb_d)) for _ in range(basis_length)], dim=0).to('cuda')
+                # self.emb_gen = nn.Parameter(torch.randn(features, emb_d))
+                # self.emb_bias = nn.Parameter(torch.randn(features, emb_d))
+            
+            def forward(self, x):
+                # print(f"X shape: {x.shape}")
+                # print(f"HD Attns shape: {self.hd_attns.shape}")
+                x = torch.einsum('bld,ldf->blf', x, self.hd_attns)
+                x = torch.einsum('blf,lfe->ble', x, self.emb_gen)
+                return x
+            
+        return HDDecoder(emb_d, hd_dim, basis_length, features)
+
+    def process_task_count(self):
+        self.task_count += 1
+
+    def forward(self, x_querry, l, x_block, train=False, task_id=None):
+
+        # e prompts
+        e_valid = False
+        if l in self.e_layers:
+            e_valid = True
+            B, C = x_querry.shape
+
+            K = getattr(self,f'e_k_{l}') # 10, D
+            p = getattr(self,f'e_p_{l}') # 10, 8, D
+            
+            q_hd = self.enc.forward(x_querry)
+            cos_sim = torch.einsum('bd,kd->bk', q_hd, K)
+            
+            top_k = torch.topk(cos_sim, self.top_k, dim=1)
+            k_idx = top_k.indices
+            K[k_idx] = K[k_idx].bundle(q_hd.unsqueeze(1).repeat(1, self.top_k, 1)).normalize() # Key Updating
+            
+            P_ = torchhd.bind(q_hd.view(B, 1, self.hd_dim), self.value_basis.view(1, self.e_p_length, self.hd_dim)).normalize() # Value Updating
+            P_ = self.dec.forward(P_) # (bs, 8, 768)
+            # P_ = p[k_idx]
+            # P_ = p_a + (quantized - p_a).detach()
+            
+            P_ = torch.Tensor(P_)
+            # select prompts
+            i = int(self.e_p_length/2)
+            # Ek = P_[:,:,:i,:].reshape((B,-1,self.emb_d))
+            # Ev = P_[:,:,i:,:].reshape((B,-1,self.emb_d))
+            Ek = P_[:,:i,:]
+            Ev = P_[:,i:,:]
+
+            # calculate prompt related loss here; 
+            loss = 0
+
+        else:
+            loss = 0
+
+        # combine prompts for prefix tuning
+        if e_valid:
+            p_return = [Ek, Ev]
+        else:
+            p_return = None
+
+        # return
+        return p_return, loss, x_block
+
 
 # Our method
 class VQPrompt(nn.Module):
@@ -445,7 +577,7 @@ def tensor_prompt(a, b, c=None, ortho=False):
     return p    
 
 class ViTZoo(nn.Module):
-    def __init__(self, num_classes=10, pt=False, prompt_flag=False, prompt_param=None, pretrained=None):
+    def __init__(self, num_classes=10, pt=False, prompt_flag=False, prompt_param=None, pretrained=None, hd_dim=None, hd_cls=None, dec_N=None):
         super(ViTZoo, self).__init__()
 
         # get last layer
@@ -507,6 +639,8 @@ class ViTZoo(nn.Module):
             self.prompt = CodaPrompt(768, prompt_param[0], prompt_param[1])
         elif self.prompt_flag == 'qt':
             self.prompt = VQPrompt(768, prompt_param[0], prompt_param[1])
+        elif self.prompt_flag == 'hd':
+            self.prompt = HDPrompt(768, prompt_param[0], prompt_param[1], hd_dim=hd_dim, hd_cls=torchhd.MAPTensor, dec_N=dec_N)
         else:
             self.prompt = None
         
@@ -657,8 +791,8 @@ class ViTZoo(nn.Module):
             # return 0.
 
             
-def vit_pt_imnet(out_dim, block_division = None, prompt_flag = 'None', prompt_param=None, pretrained=None):
-    return ViTZoo(num_classes=out_dim, pt=True, prompt_flag=prompt_flag, prompt_param=prompt_param, pretrained=pretrained)
+def vit_pt_imnet(out_dim, block_division = None, prompt_flag = 'None', prompt_param=None, pretrained=None, **kwargs):
+    return ViTZoo(num_classes=out_dim, pt=True, prompt_flag=prompt_flag, prompt_param=prompt_param, pretrained=pretrained, **kwargs)
 
 
 if __name__ == "__main__":
