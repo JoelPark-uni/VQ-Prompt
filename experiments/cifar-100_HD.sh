@@ -26,7 +26,7 @@ mkdir -p $OUTDIR
 #    arg 3 = temperature
 
 python -u run.py --config $CONFIG --gpuid $GPUID --repeat $REPEAT --overwrite $OVERWRITE \
-    --learner_type prompt --learner_name CODAPrompt \
+    --learner_type prompt --learner_name HDPrompt \
     --prompt_param 10 8 1 --seeds 0 1 2 3 4\
-    --log_dir ${OUTDIR}/vq-prompt
+    --log_dir ${OUTDIR}/hd-prompt
 sleep 10
